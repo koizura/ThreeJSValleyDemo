@@ -1,0 +1,266 @@
+import * as THREE from 'https://unpkg.com/three@0.141.0/build/three.module.js';
+// import * as THREE from './three.module.js';
+
+// import { EffectComposer } from 'https://unpkg.com/three@0.141.0/examples/jsm/postprocessing/EffectComposer.js';
+// import { RenderPass } from 'https://unpkg.com/three@0.141.0/examples/jsm/postprocessing/RenderPass.js';
+// import { BloomPass } from 'https://unpkg.com/three@0.141.0/examples/jsm/postprocessing/BloomPass.js';
+// import { GlitchPass } from 'https://unpkg.com/three@0.141.0/examples/jsm/postprocessing/GlitchPass.js';
+
+let WIDTH = window.innerWidth;
+let HEIGHT = window.innerHeight;
+let container, renderer, camera, scene;
+let cube, light, ground, wireframe, ground2, wireframe2, ground3, wireframe3;
+let mouseX = 0, mouseY = 0;
+const particles = [];
+const particleSizes = [];
+const keys = {up:false, down:false, left:false, right:false};
+let playerX = 0, playerY = 0, playerGoalX = 0, playerGoalY = 0;
+const boundX = 20, boundY1 = 3, boundY2 = 10;
+
+let composer;
+
+function init() {
+  container = document.getElementById('world');  
+  renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
+  renderer.setSize(WIDTH, HEIGHT);
+  container.appendChild(renderer.domElement);
+  
+  camera = new THREE.PerspectiveCamera(120, 2, 0.1, 500); // fov, aspect, near, far
+  camera.position.z = 50;
+  camera.position.y = 5;
+  camera.aspect = WIDTH / HEIGHT;
+  camera.updateProjectionMatrix();
+  
+  
+  scene = new THREE.Scene();
+  scene.add(camera);
+  {
+    scene.fog = new THREE.Fog(0x325c75, -10, 150);
+    //scene.fog = new THREE.FogExp2(0x325c75, 0.03);
+  }
+  {
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = new THREE.MeshNormalMaterial({});
+
+    cube = new THREE.Mesh(geometry, material);
+    cube.position.y = 5;
+    cube.position.z = 45;
+    scene.add(cube);
+
+    light = new THREE.DirectionalLight(0xFFFFFF, 1) // color, intensity
+    light.position.set(-1, 2, 4);
+    scene.add(light);
+  }
+  {
+    // valley 
+    const geometry = new THREE.PlaneGeometry(100, 105, 20, 20);
+    geometry.rotateX(-Math.PI/2);
+    const vertices = geometry.attributes.position.array;
+    
+    for (let i = 1; i < vertices.length; i+=3) {
+      if (Math.abs(vertices[i-1]) > 20) {
+        vertices[i] = Math.random() * 20; 
+      } else {
+        vertices[i] = Math.random() * 2; 
+      }
+    }
+    const material = new THREE.MeshBasicMaterial({color:0x380036, side:THREE.DoubleSide});
+    const lineMaterial = new THREE.LineBasicMaterial( { color: 0xffffff, transparent: true, opacity: 1 } );
+    ground = new THREE.Mesh(geometry, material);
+    wireframe =  new THREE.LineSegments( geometry, lineMaterial ) ;
+    wireframe.position.y += 0.2;
+    ground2 = new THREE.Mesh(geometry, material);
+    wireframe2 = new THREE.LineSegments(geometry, lineMaterial);
+    wireframe2.position.y += 0.2;
+    ground3 = new THREE.Mesh(geometry, material);
+    wireframe3 = new THREE.LineSegments(geometry, lineMaterial);
+    wireframe3.position.y += 0.2;
+    
+    scene.add(ground);
+    scene.add(wireframe);
+    scene.add(ground2);
+    scene.add(wireframe2);
+    scene.add(ground3);
+    scene.add(wireframe3);
+  }
+  
+  {
+    // particles
+    
+    const geometry = new THREE.BoxGeometry(0.5, 0.5, 20);
+    for (let i = 0; i < 100; i++) {
+      const size = Math.random() * 0.5 + 0.1;
+      const object = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({color:0xFFFFFF}));
+      object.position.x = Math.random() * 50 - 25;
+      object.position.y = Math.random() * 20 + 5;
+      object.position.z = Math.random() * 100 - 50;
+      object.scale.set(size, size, size);
+      particles.push(object);
+      particleSizes.push(size);
+      scene.add(object);
+    }
+  }
+  
+//   composer = new EffectComposer(renderer);
+//   const renderPass = new RenderPass(scene,camera);
+//   const bloomPass = new BloomPass();
+//   bloomPass.renderToScreen = true;
+
+//   composer.addPass(renderPass);
+//   composer.addPass(bloomPass); // strength, kernel size, sigma, blur render target res
+  
+//   composer.setSize(WIDTH, HEIGHT);
+  
+  
+  window.addEventListener('resize', onWindowResize, false);
+  //window.addEventListener('click', onClick, {once: true});
+  window.addEventListener('mousemove', onMouseMoved, false);
+  window.addEventListener('keydown', onMouseDown, false);
+  window.addEventListener('keyup', onMouseUp, false);
+  window.addEventListener('focusout', onFocusOut, false);
+}
+
+let prevtime = 0, dt = 0;
+let frames = 0;
+function render(now) {
+  let time = now;
+  frames++;
+  time *= 0.001; // convert time into seconds
+  dt = time-prevtime;
+  prevtime = time;
+  
+  if (frames % 60 == 0) {
+    //console.log(1/dt);
+    //console.log(dt);
+  }
+  
+  updatePlayerPos();
+  updateCameraPos();
+  
+  cube.rotation.x = time;
+  cube.rotation.y = time;
+  cube.position.x = playerX;
+  cube.position.y = playerY;
+  cube.position.z = 45;
+  
+  updateEnvironment(time);
+  
+  //composer.render(dt);
+  renderer.render(scene, camera);
+  requestAnimationFrame(render);
+  
+}
+function updateEnvironment(time) {
+
+    const groundSpeed = 13;
+  
+    ground.position.z = (time*groundSpeed) % 100 - 100;
+    wireframe.position.z = (time*groundSpeed) % 100 - 100;
+    ground2.position.z = (time*groundSpeed) % 100 - 0;
+    wireframe2.position.z = (time*groundSpeed) % 100 - 0;
+    ground3.position.z = (time*groundSpeed) % 100 - 200;
+    wireframe3.position.z = (time*groundSpeed) % 100 - 200;
+    
+    for (let i = 0; i < particles.length; i++) {
+      const particle = particles[i];
+      const size = particleSizes[i];
+      particle.position.z += size * 1.5 + 0.4;
+      if (particle.position.z > 50) {
+        particle.position.z -= 100;
+      }
+    }
+}
+function updatePlayerPos() {
+  const moveSpeed = 20;
+  playerGoalX += (keys.right - keys.left) * moveSpeed * dt;
+  playerGoalY += (keys.up - keys.down) * moveSpeed * dt;
+  if (playerGoalX > boundX) {
+    playerGoalX = boundX;
+  }
+  if (playerGoalX < -boundX) {
+    playerGoalX = -boundX;
+  }
+  if (playerGoalY < boundY1) {
+    playerGoalY = boundY1;
+  }
+  if (playerGoalY > boundY2) {
+    playerGoalY = boundY2;
+  }
+  playerX += (playerGoalX - playerX) * 0.1;
+  playerY += (playerGoalY - playerY) * 0.1;
+}
+function updateCameraPos() {
+  // const p = new THREE.Vector3(((mouseX/WIDTH)-0.5) * 20, (1-mouseY/HEIGHT) * 5 + 2, 50);
+  // camera.position.set(p.x, p.y, p.z);
+  // camera.lookAt(cube.position.x, cube.position.y, 0);
+  // camera.rotation.z = (mouseX/WIDTH)-0.5;
+  // camera.rotation.x = 0.2*(-1+(mouseY/HEIGHT));  
+  const p = new THREE.Vector3(((playerX/boundX)*0.7) * 20, playerY*0.7+3, 50);
+  camera.position.set(p.x, p.y, p.z);
+  //camera.lookAt(cube.position.x, cube.position.y, 0);
+  camera.rotation.z = (playerX/boundX)*0.5;
+  camera.rotation.x = -0.5*((playerY/boundY2));  
+}
+function onWindowResize() {
+  WIDTH = window.innerWidth;
+  HEIGHT = window.innerHeight;  
+  renderer.setSize(WIDTH, HEIGHT);
+  camera.aspect = WIDTH / HEIGHT;
+  camera.updateProjectionMatrix();
+  composer.setSize(WIDTH, HEIGHT);
+} 
+
+function onMouseMoved(event) {
+  mouseX = event.clientX;
+  mouseY = event.clientY;
+}
+function onFocusOut(event) {
+  console.log("out");
+}
+function onClick() {
+  requestAnimationFrame(render);
+}
+function onMouseDown(event) {
+  if (event.defaultPrevented) return;
+  switch (event.code) {
+    case "KeyS":
+    case "ArrowDown":
+      keys.down = true;
+      break;
+    case "KeyW":
+    case "ArrowUp":
+      keys.up = true;
+      break;
+    case "KeyA":
+    case "ArrowLeft":
+      keys.left = true;
+      break;
+    case "KeyD":
+    case "ArrowRight":
+      keys.right = true;
+      break;
+  }
+}
+function onMouseUp(event) {
+  if (event.defaultPrevented) return;
+  switch (event.code) {
+    case "KeyS":
+    case "ArrowDown":
+      keys.down = false;
+      break;
+    case "KeyW":
+    case "ArrowUp":
+      keys.up = false;
+      break;
+    case "KeyA":
+    case "ArrowLeft":
+      keys.left = false;
+      break;
+    case "KeyD":
+    case "ArrowRight":
+      keys.right = false;
+      break;
+  }
+}
+init();
+requestAnimationFrame(render);
